@@ -1,126 +1,126 @@
 import prisma from "../utils/client.js";
 import {
-  generateAcessToken,
+  generateAccessToken,
   generateRefreshToken,
   parseJWT,
   verifyRefreshToken,
 } from "../utils/jwt.js";
 import { inputUserValidation } from "../validations/user.validation.js";
 
+/**
+ * Create new user
+ */
 export const createUser = async (req, res, next) => {
   try {
     const { error, value } = inputUserValidation(req.body);
     if (error) {
       return res.status(400).json({
-        error: error.details[0].message,
-        message: "failed",
+        error: true,
+        message: error.details[0].message,
         data: null,
       });
     }
-    const user = await prisma.user.create({
-      data: {
-        ...value,
-      },
-    });
+
+    const user = await prisma.user.create({ data: value });
+
     return res.status(201).json({
-      error: null,
-      message: "success",
+      error: false,
+      message: "User created successfully",
       data: user,
     });
   } catch (error) {
-    next(
-      new Error(
-        "Error in src/controllers/user.controller.js:createUser - " +
-          error.message
-      )
-    );
+    next(new Error(`Error in user.controller:createUser - ${error.message}`));
   }
 };
 
-export const getAcessToken = async (req, res, next) => {
+/**
+ * Generate access & refresh token by UUID
+ */
+export const getAccessToken = async (req, res, next) => {
   try {
     const { id } = req.params;
+
     const user = await prisma.user.findUnique({
-      where: {
-        uuid: id,
-      },
+      where: { uuid: id },
     });
+
     if (!user) {
-      return res.status(400).json({
-        error: "user not found",
-        message: "failed",
+      return res.status(404).json({
+        error: true,
+        message: "User not found",
         data: null,
       });
     }
-    // generate acess token
-    user.uuid = "xxxxxxxxxxxxx";
-    const acessToken = generateAcessToken(user);
-    const refreshToken = generateRefreshToken(user);
+
+    const safeUser = { ...user, uuid: "xxxxxxxxxxxxx" };
+    const accessToken = generateAccessToken(safeUser);
+    const refreshToken = generateRefreshToken(safeUser);
+
     return res.status(200).json({
-      error: null,
-      message: "success",
-      data: user,
-      acessToken,
-      refreshToken,
+      error: false,
+      message: "Tokens generated successfully",
+      data: {
+        user: safeUser,
+        accessToken,
+        refreshToken,
+      },
     });
   } catch (error) {
-    next(
-      new Error(
-        "Error in src/controllers/user.controller.js:getAcessToken - " +
-          error.message
-      )
-    );
+    next(new Error(`Error in user.controller:getAccessToken - ${error.message}`));
   }
 };
 
+/**
+ * Verify refresh token and generate new tokens
+ */
 export const getRefreshToken = async (req, res, next) => {
   try {
-    const authHeader = req.headers["authorization"];
-    const token = authHeader && authHeader.split(" ")[1];
-    if (!token) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
       return res.status(401).json({
-        errors: "Invalid token",
+        error: true,
         message: "No token provided",
         data: null,
       });
     }
-    const verify = verifyRefreshToken(token);
-    if (!verify) {
+
+    const token = authHeader.split(" ")[1];
+    const isValid = verifyRefreshToken(token);
+    if (!isValid) {
       return res.status(401).json({
-        errors: "Invalid token",
-        message: "Provided token is not valid",
+        error: true,
+        message: "Invalid refresh token",
         data: null,
       });
     }
-    let data = parseJWT(token);
+
+    const payload = parseJWT(token);
     const user = await prisma.user.findUnique({
-      where: {
-        id: data.id,
+      where: { id: payload.id },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        error: true,
+        message: "User not found",
+        data: null,
+      });
+    }
+
+    const safeUser = { ...user, uuid: "xxxxxxxxxxxxx" };
+    const accessToken = generateAccessToken(safeUser);
+    const refreshToken = generateRefreshToken(safeUser);
+
+    return res.status(200).json({
+      error: false,
+      message: "Tokens refreshed successfully",
+      data: {
+        user: safeUser,
+        accessToken,
+        refreshToken,
       },
     });
-    if (!user) {
-      return res.status(400).json({
-        error: "user not found",
-        message: "failed",
-        data: null,
-      });
-    }
-    user.uuid = "xxxxxxxxxxxxx";
-    const acessToken = generateAcessToken(user);
-    const refreshToken = generateRefreshToken(user);
-    return res.status(200).json({
-      error: null,
-      message: "success",
-      data: user,
-      acessToken,
-      refreshToken,
-    });
   } catch (error) {
-    next(
-      new Error(
-        "Error in src/controllers/user.controller.js:getRefreshToken - " +
-          error.message
-      )
-    );
+    next(new Error(`Error in user.controller:getRefreshToken - ${error.message}`));
   }
 };
