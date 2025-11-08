@@ -1,0 +1,5 @@
+ [LOGGER] 2024-01-06 11:25:54.018 PM error : Error in src/controllers/product.controller.js:createProduct - req.status is not a function
+ [LOGGER] 2024-01-06 11:26:49.681 PM error : Error in src/controllers/product.controller.js:createProduct - req.status is not a function
+ [LOGGER] 2024-01-06 11:27:17.156 PM error : Error in src/controllers/product.controller.js:createProduct - req.status is not a function
+ [LOGGER] 2024-01-06 11:27:48.938 PM error : Error in src/controllers/product.controller.js:createProduct - req.status is not a function
+ [LOGGER] 2024-01-06 11:30:22.513 PM error : Error in src/controllers/product.controller.js:updateProduct - req.status is not a function
