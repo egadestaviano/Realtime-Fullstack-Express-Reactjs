@@ -71,9 +71,14 @@ export const getAllProduct = async (url) => {
       })
     );
     
-    const data = response.data.data;
-    setCachedData(cacheKey, data);
-    return data;
+    // Return the full response including pagination data
+    const result = {
+      data: response.data.data,
+      pagination: response.data.pagination
+    };
+    
+    setCachedData(cacheKey, result);
+    return result;
   } catch (error) {
     handleError(error);
   }
