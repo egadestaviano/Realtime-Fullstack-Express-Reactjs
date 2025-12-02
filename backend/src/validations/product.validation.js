@@ -5,6 +5,7 @@ export const inputProductValidation = (payload) => {
     name: joi.string().trim().required(),
     qty: joi.number().required(),
     price: joi.number().required(),
+    category: joi.string().trim().optional().allow(null, ''),
   });
   return schema.validate(payload);
 };
