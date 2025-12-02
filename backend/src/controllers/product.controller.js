@@ -1,25 +1,57 @@
 import prisma from "../utils/client.js";
 import { inputProductValidation } from "../validations/product.validation.js";
+import { getIO } from "../utils/socket.js";
 
 /**
  * Get all products
  */
 export const getAllProduct = async (req, res, next) => {
   try {
-    const data = await prisma.product.findMany();
-
-    if (data.length === 0) {
-      return res.status(404).json({
-        error: true,
-        message: "No products found",
-        data: [],
-      });
+    const { search, page = 1, limit = 10, category } = req.query;
+    
+    // Build where clause for filtering
+    const where = {};
+    
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { category: { contains: search, mode: 'insensitive' } }
+      ];
     }
-
+    
+    if (category) {
+      where.category = { equals: category, mode: 'insensitive' };
+    }
+    
+    // Calculate pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+    
+    // Fetch products with pagination
+    const [data, totalCount] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        skip,
+        take: limitNum,
+        orderBy: { name: 'asc' }
+      }),
+      prisma.product.count({ where })
+    ]);
+    
+    const totalPages = Math.ceil(totalCount / limitNum);
+    
     return res.status(200).json({
       error: false,
       message: "Products retrieved successfully",
       data,
+      pagination: {
+        currentPage: pageNum,
+        totalPages,
+        totalCount,
+        hasNext: pageNum < totalPages,
+        hasPrev: pageNum > 1
+      }
     });
   } catch (error) {
     next(new Error(`Error in product.controller:getAllProduct - ${error.message}`));
@@ -76,6 +108,10 @@ export const createProduct = async (req, res, next) => {
     }
 
     const data = await prisma.product.create({ data: value });
+    
+    // Emit event for real-time updates
+    const io = getIO();
+    io.emit('productCreated', data);
 
     return res.status(201).json({
       error: false,
@@ -114,6 +150,10 @@ export const updateProduct = async (req, res, next) => {
       where: { id },
       data: value,
     });
+    
+    // Emit event for real-time updates
+    const io = getIO();
+    io.emit('productUpdated', data);
 
     return res.status(200).json({
       error: false,
@@ -140,6 +180,10 @@ export const deleteProduct = async (req, res, next) => {
     }
 
     const data = await prisma.product.delete({ where: { id } });
+    
+    // Emit event for real-time updates
+    const io = getIO();
+    io.emit('productDeleted', { id });
 
     return res.status(200).json({
       error: false,
