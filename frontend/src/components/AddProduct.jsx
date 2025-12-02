@@ -7,6 +7,7 @@ const AddProduct = () => {
   const [name, setName] = useState("");
   const [qty, setQty] = useState("");
   const [price, setPrice] = useState("");
+  const [category, setCategory] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -26,6 +27,7 @@ const AddProduct = () => {
       name,
       qty: Number(qty),
       price: Number(price),
+      category: category || null,
     };
 
     try {
@@ -91,6 +93,17 @@ const AddProduct = () => {
               placeholder="Price"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
+              className="w-full py-3 mt-1 border border-slate-200 rounded-lg px-3 focus:outline-none focus:border-slate-500 hover:shadow"
+            />
+          </div>
+          <div className="mb-5">
+            <label className="font-bold text-slate-800">Category (Optional)</label>
+            <input
+              type="text"
+              name="category"
+              placeholder="Category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
               className="w-full py-3 mt-1 border border-slate-200 rounded-lg px-3 focus:outline-none focus:border-slate-500 hover:shadow"
             />
           </div>
