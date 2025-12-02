@@ -1,8 +1,9 @@
-import { useMemo, useCallback, Suspense } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import useSWR, { useSWRConfig } from "swr";
 import { deleteProduct, getAllProduct, clearProductCache } from "../services/ProductService.jsx";
 import { Link } from "react-router-dom";
 import Swal from "sweetalert2";
+import { initializeSocket } from '../services/SocketService.jsx';
 
 // Loading component
 const LoadingSpinner = () => (
@@ -24,6 +25,7 @@ const ProductRow = React.memo(({ product, index, onDelete, onEdit }) => (
   <tr className="bg-white border-b hover:bg-gray-50 transition-colors">
     <td className="py-3 px-2 text-center">{index + 1}</td>
     <td className="py-3 px-2 font-medium">{product.name}</td>
+    <td className="py-3 px-2 text-right">{product.category || '-'}</td>
     <td className="py-3 px-2 text-right">{product.qty.toLocaleString()}</td>
     <td className="py-3 px-2 text-right">${product.price.toFixed(2)}</td>
     <td className="py-3 px-2 text-center space-x-2">
@@ -56,6 +58,7 @@ const ProductTable = React.memo(({ data, onDelete, onEdit }) => {
           <tr>
             <th className="py-3 px-2 text-center">No</th>
             <th className="py-3 px-2">Product Name</th>
+            <th className="py-3 px-2 text-right">Category</th>
             <th className="py-3 px-2 text-right">QTY</th>
             <th className="py-3 px-2 text-right">Price</th>
             <th className="py-3 px-2 text-center">Action</th>
@@ -79,10 +82,54 @@ const ProductTable = React.memo(({ data, onDelete, onEdit }) => {
 
 const Home = () => {
   const { mutate } = useSWRConfig();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [limit] = useState(10);
+  const [categoryFilter, setCategoryFilter] = useState('');
+
+  // Initialize socket connection
+  useEffect(() => {
+    const socket = initializeSocket();
+    
+    socket.on('productCreated', (newProduct) => {
+      // Refresh the product list when a new product is created
+      clearProductCache();
+      refetch();
+    });
+    
+    socket.on('productUpdated', (updatedProduct) => {
+      // Refresh the product list when a product is updated
+      clearProductCache();
+      refetch();
+    });
+    
+    socket.on('productDeleted', (deletedProduct) => {
+      // Refresh the product list when a product is deleted
+      clearProductCache();
+      refetch();
+    });
+    
+    // Clean up socket listeners
+    return () => {
+      socket.off('productCreated');
+      socket.off('productUpdated');
+      socket.off('productDeleted');
+    };
+  }, []);
 
   const fetcher = useCallback(async (url) => {
-    return await getAllProduct(url);
-  }, []);
+    // Add query parameters for search, pagination, and category filter
+    const params = new URLSearchParams();
+    if (searchTerm) params.append('search', searchTerm);
+    if (categoryFilter) params.append('category', categoryFilter);
+    params.append('page', currentPage);
+    params.append('limit', limit);
+    
+    const queryString = params.toString();
+    const fullUrl = queryString ? `${url}?${queryString}` : url;
+    
+    return await getAllProduct(fullUrl);
+  }, [searchTerm, categoryFilter, currentPage, limit]);
 
   const { data, error, isLoading, mutate: refetch } = useSWR("/api/products", fetcher, {
     revalidateOnFocus: false,
@@ -91,6 +138,16 @@ const Home = () => {
     errorRetryCount: 3,
     errorRetryInterval: 5000,
   });
+
+  // Extract products and pagination data
+  const products = data?.data || [];
+  const pagination = data?.pagination || {
+    currentPage: 1,
+    totalPages: 1,
+    totalCount: 0,
+    hasNext: false,
+    hasPrev: false
+  };
 
   const handleDelete = useCallback(async (id) => {
     const confirm = await Swal.fire({
@@ -135,6 +192,20 @@ const Home = () => {
     clearProductCache();
     refetch();
   }, [refetch]);
+
+  const handleSearch = useCallback((e) => {
+    setSearchTerm(e.target.value);
+    setCurrentPage(1); // Reset to first page when searching
+  }, []);
+
+  const handleCategoryFilter = useCallback((e) => {
+    setCategoryFilter(e.target.value);
+    setCurrentPage(1); // Reset to first page when filtering
+  }, []);
+
+  const handlePageChange = useCallback((newPage) => {
+    setCurrentPage(newPage);
+  }, []);
 
   if (isLoading) {
     return (
@@ -211,13 +282,62 @@ const Home = () => {
             </Link>
           </div>
         </div>
+        
+        {/* Search and Filter Controls */}
+        <div className="mb-4 flex flex-col md:flex-row gap-4">
+          <div className="flex-1">
+            <input
+              type="text"
+              placeholder="Search products..."
+              className="w-full p-2 border border-gray-300 rounded-md"
+              value={searchTerm}
+              onChange={handleSearch}
+            />
+          </div>
+          <div>
+            <input
+              type="text"
+              placeholder="Filter by category..."
+              className="w-full p-2 border border-gray-300 rounded-md"
+              value={categoryFilter}
+              onChange={handleCategoryFilter}
+            />
+          </div>
+        </div>
 
-        {data && data.length > 0 ? (
-          <ProductTable
-            data={data}
-            onDelete={handleDelete}
-            onEdit={handleEdit}
-          />
+        {products && products.length > 0 ? (
+          <>
+            <ProductTable
+              data={products}
+              onDelete={handleDelete}
+              onEdit={handleEdit}
+            />
+            {/* Pagination Controls */}
+            <div className="flex justify-between items-center mt-4">
+              <div>
+                Showing {(pagination.currentPage - 1) * limit + 1} to {Math.min(pagination.currentPage * limit, pagination.totalCount)} of {pagination.totalCount} entries
+              </div>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => handlePageChange(pagination.currentPage - 1)}
+                  disabled={!pagination.hasPrev}
+                  className={`px-4 py-2 rounded-md ${pagination.hasPrev ? 'bg-blue-500 hover:bg-blue-700 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
+                >
+                  Previous
+                </button>
+                <span className="px-4 py-2">
+                  Page {pagination.currentPage} of {pagination.totalPages}
+                </span>
+                <button
+                  onClick={() => handlePageChange(pagination.currentPage + 1)}
+                  disabled={!pagination.hasNext}
+                  className={`px-4 py-2 rounded-md ${pagination.hasNext ? 'bg-blue-500 hover:bg-blue-700 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </>
         ) : (
           <div className="text-center py-8">
             <div className="text-gray-400 mb-2">📦</div>
